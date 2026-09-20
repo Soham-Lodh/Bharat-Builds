@@ -3,7 +3,8 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import appointmentModel from "../models/appointmentModel.js";
 import { v2 as cloudinary } from "cloudinary";
-import { checkAndCompleteAppointments, toggleAppointmentCompletion } from "../helpers/appointmentHelper.js";
+import { assertFutureSlot, releaseDoctorSlot, reserveDoctorSlot } from "../helpers/appointmentHelper.js";
+import userModel from "../models/userModel.js";
 
 export const changeAvailability = async (req, res) => {
   try {
@@ -145,10 +146,7 @@ export const doctorChangeAvailability = async (req, res) => {
 export const getDoctorAppointments = async (req, res) => {
   try {
     const { docId } = req.body;
-    let appointments = await appointmentModel.find({ docId });
-
-    // Auto-complete appointments whose time has passed
-    appointments = await checkAndCompleteAppointments(appointments);
+    const appointments = await appointmentModel.find({ docId }).sort({ date: -1 });
 
     res.json({ success: true, appointments });
   } catch (error) {
@@ -183,11 +181,8 @@ export const doctorCancelAppointment = async (req, res) => {
 
     const { docId, slotDate, slotTime } = appointmentData;
     const docData = await doctorModel.findById(docId);
-    let slots_booked = docData.slots_booked;
-    slots_booked[slotDate] = slots_booked[slotDate].filter(
-      (time) => time !== slotTime
-    );
-    await doctorModel.findByIdAndUpdate(docId, { slots_booked });
+    releaseDoctorSlot(docData, slotDate, slotTime);
+    await docData.save();
 
     return res.status(200).json({
       success: true,
@@ -204,7 +199,11 @@ export const doctorCancelAppointment = async (req, res) => {
 
 export const doctorCompleteAppointment = async (req, res) => {
   try {
-    const { appointmentId } = req.body;
+    const { appointmentId, docId } = req.body;
+    const followUpRaw = req.body.followUp;
+    const followUp = typeof followUpRaw === "string" && followUpRaw
+      ? JSON.parse(followUpRaw)
+      : followUpRaw;
 
     if (!appointmentId) {
       return res.status(400).json({
@@ -213,30 +212,109 @@ export const doctorCompleteAppointment = async (req, res) => {
       });
     }
 
-    const updated = await toggleAppointmentCompletion(appointmentId);
+    const appointment = await appointmentModel.findById(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: "Appointment not found" });
+    }
+    if (String(appointment.docId) !== String(docId)) {
+      return res.status(403).json({ success: false, message: "Not authorized for this appointment" });
+    }
+    if (appointment.cancelled) {
+      return res.status(400).json({ success: false, message: "Cancelled appointments cannot be completed" });
+    }
+    if (appointment.isCompleted) {
+      return res.status(400).json({ success: false, message: "Appointment is already completed" });
+    }
+
+    let prescription = appointment.prescription || {};
+    if (req.file) {
+      if (!req.file.mimetype?.startsWith("image/")) {
+        return res.status(400).json({ success: false, message: "Prescription must be an image file" });
+      }
+      const result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { resource_type: "image", folder: "prescripto/prescriptions" },
+          (err, uploadResult) => {
+            if (err) reject(err);
+            else resolve(uploadResult);
+          }
+        );
+        stream.end(req.file.buffer);
+      });
+      prescription = {
+        url: result.secure_url,
+        publicId: result.public_id,
+        uploadedAt: new Date(),
+        uploadedBy: docId,
+      };
+    }
+
+    let followUpAppointment = null;
+    if (followUp?.slotDate || followUp?.slotTime) {
+      if (!followUp.slotDate || !followUp.slotTime) {
+        return res.status(400).json({ success: false, message: "Follow-up date and time are both required" });
+      }
+      try {
+        assertFutureSlot(followUp.slotDate, followUp.slotTime);
+      } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+      }
+
+      const doctor = await doctorModel.findById(docId).select("-password");
+      if (!doctor) {
+        return res.status(404).json({ success: false, message: "Doctor not found" });
+      }
+      const patient = await userModel.findById(appointment.userId).select("-password");
+      if (!patient) {
+        return res.status(404).json({ success: false, message: "Patient not found" });
+      }
+
+      try {
+        reserveDoctorSlot(doctor, followUp.slotDate, followUp.slotTime);
+      } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+      }
+      await doctor.save();
+
+      followUpAppointment = await appointmentModel.create({
+        userId: appointment.userId,
+        docId,
+        userData: patient,
+        docData: {
+          _id: doctor._id,
+          name: doctor.name,
+          speciality: doctor.speciality,
+          fees: doctor.fees,
+          image: doctor.image,
+          address: doctor.address,
+        },
+        slotDate: followUp.slotDate,
+        slotTime: followUp.slotTime,
+        amount: doctor.fees,
+        date: Date.now(),
+        payment: false,
+        isCompleted: false,
+        cancelled: false,
+        appointmentType: "FOLLOW_UP",
+        parentAppointmentId: appointment._id,
+        followUpNotes: followUp.notes || "",
+      });
+      appointment.followUpAppointmentId = followUpAppointment._id;
+    }
+
+    appointment.isCompleted = true;
+    appointment.prescription = prescription;
+    await appointment.save();
 
     return res.status(200).json({
       success: true,
-      message: `Appointment marked as ${updated.isCompleted ? "completed" : "incomplete"}`,
-      isCompleted: updated.isCompleted,
+      message: "Consultation completed successfully",
+      appointment,
+      followUpAppointment,
     });
   } catch (error) {
     console.error("Complete appointment error:", error);
     
-    if (error.message === "Appointment not found") {
-      return res.status(404).json({
-        success: false,
-        message: "Appointment not found",
-      });
-    }
-
-    if (error.message.includes("cancelled")) {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-      });
-    }
-
     return res.status(500).json({
       success: false,
       message: error.message,
@@ -247,17 +325,14 @@ export const doctorCompleteAppointment = async (req, res) => {
 export const doctorDashboard = async (req, res) => {
   try {
     const { docId } = req.body;
-    let appointments = await appointmentModel.find({ docId });
-
-    // Auto-complete appointments whose time has passed
-    appointments = await checkAndCompleteAppointments(appointments);
+    const appointments = await appointmentModel.find({ docId }).sort({ date: -1 });
 
     const dashData = {
       appointments: appointments.length,
       patients: new Set(appointments.map((apt) => apt.userId)).size,
       cancelled: appointments.filter((apt) => apt.cancelled).length,
       completed: appointments.filter((apt) => apt.isCompleted).length,
-      latestAppointments: appointments.reverse().slice(0, 5),
+      latestAppointments: appointments.slice(0, 5),
     };
 
     res.json({ success: true, dashData });
