@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import MyAppointments from "./pages/MyAppointments";
 import MyProfile from "./pages/MyProfile";
 import Appointments from "./pages/Appointments";
+import MedicalCopilot from "./pages/MedicalCopilot";
 import NotFound from "./pages/NotFound";
 
 import NavBar from "./components/NavBar";
@@ -56,6 +57,7 @@ const App = () => {
           <Route path="/login" element={<Login />} />
           <Route path="/my-appointments" element={<MyAppointments />} />
           <Route path="/my-profile" element={<MyProfile />} />
+          <Route path="/medical-copilot" element={<MedicalCopilot />} />
           <Route path="/appointments/:docId" element={<Appointments />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

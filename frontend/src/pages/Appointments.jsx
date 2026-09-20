@@ -397,6 +397,24 @@ const Appointments = () => {
         </div>
       </div>
 
+      <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-bold text-gray-900">Prepare for this appointment</h3>
+            <p className="mt-1 text-sm text-gray-700">
+              Use the medical assistant to organize symptoms, reports, medicines, and questions before meeting a {docInfo.speciality}.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/medical-copilot")}
+            className="rounded-full bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Open Medical Assistant
+          </button>
+        </div>
+      </div>
+
       {/* ── RELATED DOCTORS ── */}
       <div className="mt-12">
         <RelatedDoctors docId={docId} speciality={docInfo.speciality} />

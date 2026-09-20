@@ -74,6 +74,9 @@ const NavBar = () => {
             <NavLink to="/doctors" className={navLinkClass}>
               ALL DOCTORS
             </NavLink>
+            <NavLink to="/medical-copilot" className={navLinkClass}>
+              MEDICAL ASSISTANT
+            </NavLink>
             <NavLink to="/about" className={navLinkClass}>
               ABOUT
             </NavLink>
@@ -130,6 +133,15 @@ const NavBar = () => {
                       </p>
                       <p
                         onClick={() => {
+                          navigate("/medical-copilot");
+                          setShowDropdown(false);
+                        }}
+                        className="px-4 py-3 hover:bg-blue-50 rounded cursor-pointer"
+                      >
+                        Medical Assistant
+                      </p>
+                      <p
+                        onClick={() => {
                           navigate("/my-appointments");
                           setShowDropdown(false);
                         }}
@@ -183,6 +195,13 @@ const NavBar = () => {
               All Doctors
             </NavLink>
             <NavLink
+              to="/medical-copilot"
+              onClick={() => setMobileOpen(false)}
+              className={mobileNavLinkClass}
+            >
+              Medical Assistant
+            </NavLink>
+            <NavLink
               to="/about"
               onClick={() => setMobileOpen(false)}
               className={mobileNavLinkClass}
@@ -215,6 +234,13 @@ const NavBar = () => {
                   className={mobileNavLinkClass}
                 >
                   My Profile
+                </NavLink>
+                <NavLink
+                  to="/medical-copilot"
+                  onClick={() => setMobileOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  Medical Assistant
                 </NavLink>
                 <NavLink
                   to="/my-appointments"

@@ -2,6 +2,7 @@ import React, { useState, useContext } from "react";
 import { AppContext } from "../context/AppContext";
 import { toast } from "react-toastify";
 import { assets } from "../assets/assets_frontend/assets";
+import { Link } from "react-router-dom";
 
 const MyProfile = () => {
   const [isEdit, setIsEdit] = useState(false);
@@ -196,6 +197,14 @@ const MyProfile = () => {
         </div>
 
         <div>
+          {!isEdit && (
+            <Link
+              to="/medical-copilot"
+              className="mr-3 inline-block bg-blue-50 mt-5 rounded-md text-blue-700 px-7 py-2 hover:bg-blue-100 transition-all duration-300"
+            >
+              View chat history
+            </Link>
+          )}
           {isEdit ? (
             <button
               className={`bg-[rgb(95,111,255)] mt-5 rounded-md text-white px-7 py-2 transition-all duration-300 ${loading
