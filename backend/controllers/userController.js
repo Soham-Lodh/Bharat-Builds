@@ -6,7 +6,7 @@ import contactModel from "../models/contactModel.js";
 import jwt from "jsonwebtoken";
 import validator from "validator";
 import { v2 as cloudinary } from "cloudinary";
-import { checkAndCompleteAppointments } from "../helpers/appointmentHelper.js";
+import { assertFutureSlot, releaseDoctorSlot, reserveDoctorSlot } from "../helpers/appointmentHelper.js";
 
 // Helper function for strict sanitization
 const sanitizeInput = (input) => {
@@ -167,6 +167,12 @@ export const bookAppointment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
+    try {
+      assertFutureSlot(slotDate, slotTime);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
     const docData = await doctorModel.findById(docId).select("-password");
     if (!docData) {
       return res.status(404).json({ success: false, message: "Doctor not found" });
@@ -176,18 +182,12 @@ export const bookAppointment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Doctor is not available" });
     }
 
-    if (!docData.slots_booked) docData.slots_booked = {};
-
-    // Race Condition Prevention (Basic)
-    if (docData.slots_booked[slotDate]?.includes(slotTime)) {
-      return res.status(400).json({ success: false, message: "Slot already booked" });
+    try {
+      reserveDoctorSlot(docData, slotDate, slotTime);
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
     }
-
-    if (!docData.slots_booked[slotDate]) docData.slots_booked[slotDate] = [];
-    docData.slots_booked[slotDate].push(slotTime);
-    
-    // Mark slot unavailable
-    await doctorModel.findByIdAndUpdate(docId, { slots_booked: docData.slots_booked });
+    await docData.save();
 
     const userData = await userModel.findById(userId).select("-password");
 
@@ -207,6 +207,7 @@ export const bookAppointment = async (req, res) => {
       slotTime,
       amount: docData.fees,
       date: Date.now(),
+      appointmentType: "INITIAL",
     };
 
     const newAppointment = new appointmentModel(appointmentData);
@@ -226,10 +227,7 @@ export const bookAppointment = async (req, res) => {
 export const listAppointments = async (req, res) => {
   try {
     const userId = req.user.userId;
-    let appointments = await appointmentModel.find({ userId }).sort({ date: -1 });
-
-    // Auto-complete appointments whose time has passed
-    appointments = await checkAndCompleteAppointments(appointments);
+    const appointments = await appointmentModel.find({ userId }).sort({ date: -1 });
 
     return res.status(200).json({ success: true, appointments });
   } catch (error) {
@@ -262,9 +260,8 @@ export const cancelAppointment = async (req, res) => {
     const docData = await doctorModel.findById(docId);
     
     if(docData && docData.slots_booked && docData.slots_booked[slotDate]){
-      let slots_booked = docData.slots_booked;
-      slots_booked[slotDate] = slots_booked[slotDate].filter((time) => time !== slotTime);
-      await doctorModel.findByIdAndUpdate(docId, { slots_booked });
+      releaseDoctorSlot(docData, slotDate, slotTime);
+      await docData.save();
     }
 
     return res.status(200).json({ success: true, message: "Appointment cancelled successfully" });

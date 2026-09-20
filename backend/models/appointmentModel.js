@@ -46,6 +46,32 @@ const appointmentSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  appointmentType: {
+    type: String,
+    enum: ["INITIAL", "FOLLOW_UP"],
+    default: "INITIAL",
+  },
+  parentAppointmentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "appointments",
+    default: null,
+  },
+  followUpNotes: {
+    type: String,
+    default: "",
+  },
+  followUpAppointmentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "appointments",
+    default: null,
+  },
+  prescription: {
+    url: { type: String, default: "" },
+    publicId: { type: String, default: "" },
+    uploadedAt: { type: Date, default: null },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "doctor", default: null },
+  },
 });
+appointmentSchema.index({ docId: 1, slotDate: 1, slotTime: 1 });
 const appointmentModel = mongoose.model("appointments", appointmentSchema);
 export default appointmentModel;

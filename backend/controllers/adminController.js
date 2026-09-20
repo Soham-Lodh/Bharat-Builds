@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import appointmentModel from "../models/appointmentModel.js";
 import contactModel from "../models/contactModel.js";
 import userModel from "../models/userModel.js";
+import { releaseDoctorSlot } from "../helpers/appointmentHelper.js";
 
 export const addDoctor = async (req, res) => {
   try {
@@ -375,11 +376,10 @@ export const adminCancelAppointment = async (req, res) => {
     });
     const { docId, slotDate, slotTime } = appointmentData;
     const docData = await doctorModel.findById(docId);
-    let slots_booked = docData.slots_booked;
-    slots_booked[slotDate] = slots_booked[slotDate].filter(
-      (time) => time !== slotTime
-    );
-    await doctorModel.findByIdAndUpdate(docId, { slots_booked });
+    if (docData) {
+      releaseDoctorSlot(docData, slotDate, slotTime);
+      await docData.save();
+    }
     return res.status(200).json({
       success: true,
       message: "Appointment cancelled successfully",

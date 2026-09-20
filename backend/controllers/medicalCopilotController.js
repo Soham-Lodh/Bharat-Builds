@@ -13,6 +13,8 @@ import { formatRefusal, formatStructuredAnswer } from "../services/responseForma
 import { generateDoctorVisitPrep } from "../services/doctorVisitPrep.js";
 import grokClient from "../services/grokClient.js";
 import { parseJsonObject, unique } from "../services/jsonUtils.js";
+import { resolveSpeciality } from "../services/specialityResolver.js";
+import doctorModel from "../models/doctorModel.js";
 
 const uploadToCloudinary = async (file) => {
   if (!file) return "";
@@ -192,11 +194,26 @@ export const medicalChat = async (req, res) => {
     const answer = await generateMedicalAnswer({ message: message || imageAnalysis?.analysis || "Uploaded medical image", session, sources, imageAnalysis, reportExplanation });
     const refusal = detectUncertainty({ message, confidence: answer.confidence, imageType: imageAnalysis?.imageType });
     const symptoms = extractSymptoms(message, emergency.symptoms);
-    const visitPrep = generateDoctorVisitPrep(message, symptoms);
+    const availableSpecialities = await doctorModel.distinct("speciality", { available: true });
+    const identifiedConditions = [
+      ...(answer.possibleExplanations || []).map((item) => item.label),
+      ...sources.map((source) => source.condition),
+    ].filter(Boolean);
+    const doctorRecommendation = resolveSpeciality({
+      message,
+      identifiedConditions,
+      imageAnalysis,
+      symptoms,
+      sources,
+      availableSpecialities,
+    });
+    const visitPrep = generateDoctorVisitPrep(message, symptoms, doctorRecommendation);
 
     const response = refusal.shouldRefuse
       ? formatRefusal(refusal)
       : formatStructuredAnswer({ message, answer, sources, imageAnalysis, reportExplanation, visitPrep });
+
+    response.doctorRecommendation = doctorRecommendation;
 
     if (!refusal.shouldRefuse && imageAnalysis?.imageType && !response.documentType) {
       response.documentType = imageAnalysis.imageType;

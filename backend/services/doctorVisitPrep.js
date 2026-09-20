@@ -8,14 +8,21 @@ const mappings = [
   { pattern: /(child|baby|infant|pediatric)/i, speciality: "Pediatrician" },
 ];
 
-export const generateDoctorVisitPrep = (message = "", symptoms = []) => {
+export const generateDoctorVisitPrep = (message = "", symptoms = [], doctorRecommendation = null) => {
+  if (doctorRecommendation?.speciality) {
+    const speciality = doctorRecommendation.speciality;
+    return buildPrep(speciality, doctorRecommendation.appointmentPath);
+  }
   const text = `${message} ${symptoms.join(" ")}`;
   const match = mappings.find((item) => item.pattern.test(text));
-  const speciality = match?.speciality || "General physician";
+  const speciality = match?.speciality || "General Physician";
+  return buildPrep(speciality, `/doctors/${encodeURIComponent(speciality)}`);
+};
 
+const buildPrep = (speciality, appointmentPath) => {
   return {
     speciality,
-    appointmentPath: `/doctors/${encodeURIComponent(speciality)}`,
+    appointmentPath,
     questionsToDiscuss: [
       "How long should this pattern warrant evaluation?",
       "What symptoms should I track?",
